@@ -26,4 +26,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setIgnoreMouseEvents: (ignore: boolean): void => {
     ipcRenderer.send('main:set-ignore-mouse-events', ignore)
   },
+
+  // Move the main window by a pixel delta (renderer-driven drag)
+  moveWindow: (dx: number, dy: number): void => {
+    ipcRenderer.send('main:move-window', dx, dy)
+  },
+
+  // Resize the window to (width × height), anchored to the bottom-right corner
+  resizeWindow: (width: number, height: number): void => {
+    ipcRenderer.send('main:resize-window', width, height)
+  },
 })

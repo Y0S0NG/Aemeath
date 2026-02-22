@@ -7,14 +7,18 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 
 function createMainWindow(): void {
-  const { width, height } = screen.getPrimaryDisplay().bounds
-  const winWidth = 380
+  // Use workArea so the window is sized/placed within the menu-bar + dock margins
+  const { x: waX, y: waY, width: waWidth, height: waHeight } =
+    screen.getPrimaryDisplay().workArea
+  // Start at button size; React will call 'main:resize-window' once it renders
+  const winWidth  = 80
+  const winHeight = 80
 
   mainWindow = new BrowserWindow({
-    x: width - winWidth,
-    y: 0,
+    x: waX + waWidth  - winWidth,           // flush with right edge of work area
+    y: waY + waHeight - winHeight,          // flush with bottom edge of work area
     width: winWidth,
-    height,
+    height: winHeight,
     transparent: true,
     frame: false,
     hasShadow: false,
@@ -104,4 +108,23 @@ ipcMain.on('overlay:update', (_event, data: unknown) => {
 // Renderer calls this when the mouse enters/leaves interactive content
 ipcMain.on('main:set-ignore-mouse-events', (_event, ignore: boolean) => {
   mainWindow?.setIgnoreMouseEvents(ignore, { forward: true })
+})
+
+// Move the main window by a pixel delta (used for custom button drag)
+ipcMain.on('main:move-window', (_event, dx: number, dy: number) => {
+  if (!mainWindow) return
+  const [x, y] = mainWindow.getPosition()
+  mainWindow.setPosition(Math.round(x + dx), Math.round(y + dy))
+})
+
+// Resize the main window while keeping its bottom-right corner fixed.
+// Called by the renderer whenever the widget's content size changes.
+ipcMain.on('main:resize-window', (_event, width: number, height: number) => {
+  if (!mainWindow) return
+  const [x, y] = mainWindow.getPosition()
+  const [oldW, oldH] = mainWindow.getSize()
+  mainWindow.setBounds(
+    { x: x + oldW - width, y: y + oldH - height, width, height },
+    false, // no macOS animation
+  )
 })

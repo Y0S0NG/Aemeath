@@ -9,6 +9,8 @@ declare global {
       sendOverlayUpdate: (data: GuidanceResponse) => void
       onOverlayUpdate: (cb: (data: GuidanceResponse) => void) => () => void
       setIgnoreMouseEvents: (ignore: boolean) => void
+      moveWindow: (dx: number, dy: number) => void
+      resizeWindow: (width: number, height: number) => void
     }
   }
 }

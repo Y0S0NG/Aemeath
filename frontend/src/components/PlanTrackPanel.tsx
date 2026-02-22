@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { Plan } from '../types'
 import { useScreenCapture } from '../hooks/useScreenCapture'
-import GuidanceOverlay from './GuidanceOverlay'
 
 interface Props {
   plan: Plan
@@ -15,8 +14,6 @@ export default function PlanTrackPanel({ plan, onReset }: Props) {
     isCapturing,
     isComplete,
     currentStepId,
-    guidanceResponse,
-    stream,
     startCapture,
     stopCapture,
   } = useScreenCapture(plan, intervalSecs)
@@ -116,10 +113,6 @@ export default function PlanTrackPanel({ plan, onReset }: Props) {
         )}
       </div>
 
-      {/* Full-screen overlay — rendered via fixed positioning, escapes panel bounds */}
-      {isCapturing && guidanceResponse && stream && (
-        <GuidanceOverlay response={guidanceResponse} stream={stream} />
-      )}
     </>
   )
 }

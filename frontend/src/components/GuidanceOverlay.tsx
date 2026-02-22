@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { GuidanceResponse, HintRegion } from '../types'
 
 interface Props {
   response: GuidanceResponse
-  stream: MediaStream
 }
 
 // CSS position for the instruction card per hint region
@@ -16,7 +14,7 @@ const CARD_STYLE: Record<HintRegion, React.CSSProperties> = {
   center:       { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' },
 }
 
-// Normalized anchor within the content area for the pulsing dot
+// Normalized anchor per region for the pulsing dot (no-bbox fallback)
 const REGION_ANCHOR: Record<HintRegion, { nx: number; ny: number }> = {
   top_left:     { nx: 0.05, ny: 0.05 },
   top_right:    { nx: 0.95, ny: 0.05 },
@@ -25,97 +23,51 @@ const REGION_ANCHOR: Record<HintRegion, { nx: number; ny: number }> = {
   center:       { nx: 0.50, ny: 0.50 },
 }
 
-export default function GuidanceOverlay({ response, stream }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [videoDims, setVideoDims] = useState({ w: 0, h: 0 })
-  const [winSize, setWinSize] = useState({ w: window.innerWidth, h: window.innerHeight })
-
-  // Attach the stream to the visible <video> element
-  useEffect(() => {
-    const v = videoRef.current
-    if (v) {
-      v.srcObject = stream
-      v.play().catch(() => {})
-    }
-  }, [stream])
-
-  // Keep window size in sync for coordinate math
-  useEffect(() => {
-    const onResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight })
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  // Compute the actual rendered content rect inside the <video> (object-fit: contain)
-  // so bbox_norm coordinates map to the right pixels.
-  const bounds = useMemo(() => {
-    const { w: vw, h: vh } = videoDims
-    const { w: ww, h: wh } = winSize
-    if (!vw || !vh) return null
-    const va = vw / vh
-    const wa = ww / wh
-    let rW: number, rH: number, oX: number, oY: number
-    if (va > wa) { rW = ww; rH = ww / va; oX = 0;           oY = (wh - rH) / 2 }
-    else         { rH = wh; rW = wh * va; oX = (ww - rW) / 2; oY = 0 }
-    return { rW, rH, oX, oY }
-  }, [videoDims, winSize])
+export default function GuidanceOverlay({ response }: Props) {
+  // Overlay window covers the full primary display — use screen dimensions directly
+  const sw = window.screen.width
+  const sh = window.screen.height
 
   const { status, next_instruction, ui_target } = response
   const isOffTrack = status === 'off_track'
   const bbox = ui_target?.bbox_norm          // [x1, y1, x2, y2] normalized 0–1
   const hintRegion = ui_target?.hint_region ?? 'bottom_right'
   const color = isOffTrack ? '#f97316' : '#6366f1'
-  const { w: ww, h: wh } = winSize
 
-  // Bounding box in screen pixels (mapped into the rendered video content area)
-  const bboxPx = bounds && bbox ? {
-    x:  bounds.oX + bbox[0] * bounds.rW,
-    y:  bounds.oY + bbox[1] * bounds.rH,
-    w:  (bbox[2] - bbox[0]) * bounds.rW,
-    h:  (bbox[3] - bbox[1]) * bounds.rH,
-    cx: bounds.oX + ((bbox[0] + bbox[2]) / 2) * bounds.rW,
-    cy: bounds.oY + ((bbox[1] + bbox[3]) / 2) * bounds.rH,
+  // bbox_norm → absolute screen pixels (no letterbox needed — overlay IS the screen)
+  const bboxPx = bbox ? {
+    x:  bbox[0] * sw,
+    y:  bbox[1] * sh,
+    w:  (bbox[2] - bbox[0]) * sw,
+    h:  (bbox[3] - bbox[1]) * sh,
+    cx: ((bbox[0] + bbox[2]) / 2) * sw,
+    cy: ((bbox[1] + bbox[3]) / 2) * sh,
   } : null
 
-  // Approximate pixel anchor for the call-out line start (near card edge)
+  // Approximate pixel start for the call-out line from the instruction card
   const cardLineAnchor: Record<HintRegion, { x: number; y: number }> = {
     top_left:     { x: 240,      y: 50 },
-    top_right:    { x: ww - 240, y: 50 },
-    bottom_left:  { x: 240,      y: wh - 50 },
-    bottom_right: { x: ww - 240, y: wh - 50 },
-    center:       { x: ww / 2,   y: wh / 2 },
+    top_right:    { x: sw - 240, y: 50 },
+    bottom_left:  { x: 240,      y: sh - 50 },
+    bottom_right: { x: sw - 240, y: sh - 50 },
+    center:       { x: sw / 2,   y: sh / 2 },
   }
   const lineStart = cardLineAnchor[hintRegion]
 
-  // Pulsing dot position (when no bbox)
-  const dotPx = bounds
-    ? {
-        x: bounds.oX + REGION_ANCHOR[hintRegion].nx * bounds.rW,
-        y: bounds.oY + REGION_ANCHOR[hintRegion].ny * bounds.rH,
-      }
-    : { x: ww * 0.9, y: wh * 0.9 }
+  // Pulsing dot position for the no-bbox fallback
+  const dotPx = {
+    x: REGION_ANCHOR[hintRegion].nx * sw,
+    y: REGION_ANCHOR[hintRegion].ny * sh,
+  }
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none">
 
-      {/* ── Live screen capture video (fills viewport, letterboxed) ── */}
-      <video
-        ref={videoRef}
-        className="absolute inset-0 w-full h-full"
-        style={{ objectFit: 'contain', background: '#000' }}
-        muted
-        autoPlay
-        onLoadedMetadata={() => {
-          const v = videoRef.current!
-          setVideoDims({ w: v.videoWidth, h: v.videoHeight })
-        }}
-      />
-
-      {/* ── SVG annotation layer (pixel coordinates matching video content) ── */}
+      {/* ── SVG annotation layer ── */}
       <svg
         className="absolute inset-0"
-        style={{ width: ww, height: wh }}
-        viewBox={`0 0 ${ww} ${wh}`}
+        style={{ width: sw, height: sh }}
+        viewBox={`0 0 ${sw} ${sh}`}
       >
         {/* Glowing bounding box */}
         {bboxPx && (

@@ -7,7 +7,6 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
   const [isComplete, setIsComplete] = useState(false)
   const [currentStepId, setCurrentStepId] = useState<string | null>(null)
   const [guidanceResponse, setGuidanceResponse] = useState<GuidanceResponse | null>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
 
   const streamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -26,9 +25,9 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     videoRef.current = null
-    setStream(null)
     setIsCapturing(false)
     setGuidanceResponse(null)
+    window.electronAPI.hideOverlay()
   }, [])
 
   const captureAndAnalyze = useCallback(async () => {
@@ -49,6 +48,7 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     try {
       const response = await analyzeScreenshot(p, stepId, b64)
       setGuidanceResponse(response)
+      window.electronAPI.sendOverlayUpdate(response)
 
       const stepIndex = p.steps.findIndex(s => s.id === response.current_step_id)
       stepIdRef.current = response.current_step_id
@@ -74,9 +74,18 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     if (!p || p.steps.length === 0) return
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      const sources = await window.electronAPI.getScreenSources()
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          // @ts-ignore — Electron-specific constraint
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sources[0].id,
+          },
+        },
+      })
       streamRef.current = stream
-      setStream(stream)
 
       const video = document.createElement('video')
       video.srcObject = stream
@@ -90,18 +99,20 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
       setIsCapturing(true)
       setIsComplete(false)
 
+      window.electronAPI.showOverlay()
+
       video.play().catch(() => {})
 
       video.onloadedmetadata = () => {
         timerRef.current = setInterval(captureAndAnalyze, intervalSecs * 1000)
       }
 
-      // Handle user stopping screen share from the browser's native UI
+      // Handle user stopping screen share from the native UI
       stream.getVideoTracks()[0].addEventListener('ended', stopCapture)
     } catch (err) {
       console.error('Screen capture error:', err)
     }
   }, [intervalSecs, captureAndAnalyze, stopCapture])
 
-  return { isCapturing, isComplete, currentStepId, guidanceResponse, stream, startCapture, stopCapture }
+  return { isCapturing, isComplete, currentStepId, guidanceResponse, startCapture, stopCapture }
 }

@@ -4,7 +4,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from app.schemas.guidance_schema import GuidanceResponse
+from app.schemas.guidance_schema import CommanderResponse
 from app.schemas.plan_schema import Plan
 
 _BASE_SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "guidance_system.txt").read_text()
@@ -21,14 +21,14 @@ def _strip_code_fences(text: str) -> str:
     return text
 
 
-def _uncertain_fallback(current_step_id: str) -> GuidanceResponse:
-    return GuidanceResponse(
+def _uncertain_fallback(current_step_id: str) -> CommanderResponse:
+    return CommanderResponse(
         status="uncertain",
         confidence=0.0,
         current_step_id=current_step_id,
         step_done=False,
         next_instruction="Unable to analyze the screenshot. Please try again.",
-        ui_target=None,
+        target=None,
     )
 
 
@@ -36,9 +36,9 @@ async def run_guidance(
     plan: Plan,
     current_step_id: str,
     screenshot_b64: str,
-) -> GuidanceResponse:
+) -> CommanderResponse:
     """
-    Analyze a screenshot against the current step and return a GuidanceResponse.
+    Analyze a screenshot against the current step and return a CommanderResponse.
 
     Args:
         plan: The full structured plan.
@@ -79,6 +79,6 @@ async def run_guidance(
         response = await llm.ainvoke(messages)
         raw = _strip_code_fences(response.content)
         data = json.loads(raw)
-        return GuidanceResponse(**data)
+        return CommanderResponse(**data)
     except Exception:
         return _uncertain_fallback(current_step_id)

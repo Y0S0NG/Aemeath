@@ -28,10 +28,14 @@ export type HintRegion =
 export type GuidanceStatus = "on_track" | "off_track" | "uncertain";
 
 export interface UITarget {
-  hint_region: HintRegion;
-  target_text: string;
-  /** [x1, y1, x2, y2] normalized 0–1 relative to screenshot dimensions */
-  bbox_norm: [number, number, number, number];
+  hint_region?: HintRegion;
+  target_text?: string;
+  /** [x1, y1, x2, y2] normalized 0–1; null when locator found no confident match */
+  bbox_norm: [number, number, number, number] | null;
+  /** Confidence of the CV locator (0–1), independent of LLM confidence */
+  locator_confidence: number;
+  /** Which method resolved the bbox: "ocr", "template", "none" */
+  locator_method: string;
 }
 
 export interface GuidanceResponse {
@@ -41,6 +45,8 @@ export interface GuidanceResponse {
   /** True only when status is "on_track" and the step's success criteria are met */
   step_done: boolean;
   next_instruction: string;
-  /** Omitted when status is "off_track" or "uncertain" */
+  /** Present when status is "on_track" and a target was identified */
   ui_target?: UITarget;
+  /** Optional extra context from the LLM */
+  notes?: string;
 }

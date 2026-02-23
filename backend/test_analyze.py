@@ -68,8 +68,8 @@ PLAN = Plan(
         ),
         PlanStep(
             id="s2",
-            title="Open the Clusters page",
-            success_criteria="The Clusters list page is open, showing existing clusters or an empty state",
+            title="Open the Clusters tab",
+            success_criteria="The Clusters list tab is open, showing existing clusters or an empty state",
         ),
         PlanStep(
             id="s3",

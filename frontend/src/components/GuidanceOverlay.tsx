@@ -1,26 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import type { GuidanceResponse, HintRegion } from '../types'
+import type { GuidanceResponse } from '../types'
 
 interface Props {
   response: GuidanceResponse
-}
-
-// CSS position for the instruction card per hint region
-const CARD_STYLE: Record<HintRegion, React.CSSProperties> = {
-  top_left:     { top: '16px',    left: '16px' },
-  top_right:    { top: '16px',    right: '16px' },
-  bottom_left:  { bottom: '16px', left: '16px' },
-  bottom_right: { bottom: '16px', right: '16px' },
-  center:       { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' },
-}
-
-// Normalized anchor per region for the pulsing dot (no-bbox fallback)
-const REGION_ANCHOR: Record<HintRegion, { nx: number; ny: number }> = {
-  top_left:     { nx: 0.05, ny: 0.05 },
-  top_right:    { nx: 0.95, ny: 0.05 },
-  bottom_left:  { nx: 0.05, ny: 0.95 },
-  bottom_right: { nx: 0.95, ny: 0.95 },
-  center:       { nx: 0.50, ny: 0.50 },
 }
 
 export default function GuidanceOverlay({ response }: Props) {
@@ -31,10 +13,9 @@ export default function GuidanceOverlay({ response }: Props) {
   const { status, next_instruction, ui_target } = response
   const isOffTrack = status === 'off_track'
   const bbox = ui_target?.bbox_norm          // [x1, y1, x2, y2] normalized 0–1
-  const hintRegion = ui_target?.hint_region ?? 'bottom_right'
   const color = isOffTrack ? '#f97316' : '#6366f1'
 
-  // bbox_norm → absolute screen pixels (no letterbox needed — overlay IS the screen)
+  // bbox_norm → absolute screen pixels
   const bboxPx = bbox ? {
     x:  bbox[0] * sw,
     y:  bbox[1] * sh,
@@ -44,21 +25,42 @@ export default function GuidanceOverlay({ response }: Props) {
     cy: ((bbox[1] + bbox[3]) / 2) * sh,
   } : null
 
-  // Approximate pixel start for the call-out line from the instruction card
-  const cardLineAnchor: Record<HintRegion, { x: number; y: number }> = {
-    top_left:     { x: 240,      y: 50 },
-    top_right:    { x: sw - 240, y: 50 },
-    bottom_left:  { x: 240,      y: sh - 50 },
-    bottom_right: { x: sw - 240, y: sh - 50 },
-    center:       { x: sw / 2,   y: sh / 2 },
-  }
-  const lineStart = cardLineAnchor[hintRegion]
+  // Card dimensions (w-56 = 224px wide; height is dynamic but estimated for placement)
+  const CARD_W = 224
+  const CARD_H = 80
+  const GAP    = 10   // px gap between card edge and bbox edge
 
-  // Pulsing dot position for the no-bbox fallback
-  const dotPx = {
-    x: REGION_ANCHOR[hintRegion].nx * sw,
-    y: REGION_ANCHOR[hintRegion].ny * sh,
-  }
+  // Position the card just above or below the bbox, horizontally aligned with it.
+  // Falls back to bottom-right corner when there is no bbox.
+  const { cardStyle, lineStart, lineEnd } = (() => {
+    if (!bboxPx) return {
+      cardStyle: { bottom: '16px', right: '16px' } as React.CSSProperties,
+      lineStart: { x: sw - 240, y: sh - 50 },
+      lineEnd:   { x: sw / 2,   y: sh / 2 },
+    }
+
+    const spaceAbove = bboxPx.y
+    const spaceBelow = sh - (bboxPx.y + bboxPx.h)
+    const above = spaceAbove >= spaceBelow || spaceAbove >= CARD_H + GAP
+
+    const top  = Math.max(8, above
+      ? bboxPx.y - CARD_H - GAP
+      : bboxPx.y + bboxPx.h + GAP)
+    const left = Math.min(Math.max(bboxPx.x, 8), sw - CARD_W - 8)
+
+    // Line: card edge facing bbox → nearest bbox edge centre
+    const lx = left + CARD_W / 2
+    const ly = above ? top + CARD_H : top
+
+    return {
+      cardStyle: { position: 'absolute', top, left } as React.CSSProperties,
+      lineStart: { x: lx, y: ly },
+      lineEnd:   { x: bboxPx.cx, y: above ? bboxPx.y : bboxPx.y + bboxPx.h },
+    }
+  })()
+
+  // Pulsing dot position for the no-bbox fallback — screen centre
+  const dotPx = { x: sw / 2, y: sh / 2 }
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none">
@@ -83,11 +85,11 @@ export default function GuidanceOverlay({ response }: Props) {
           />
         )}
 
-        {/* Dashed call-out line: instruction card → bbox center */}
+        {/* Dashed call-out line: card edge → nearest bbox edge */}
         {bboxPx && (
           <motion.line
             x1={lineStart.x} y1={lineStart.y}
-            x2={bboxPx.cx}   y2={bboxPx.cy}
+            x2={lineEnd.x}   y2={lineEnd.y}
             stroke={color} strokeWidth={2}
             strokeDasharray="8 5" strokeLinecap="round"
             initial={{ opacity: 0 }}
@@ -111,21 +113,23 @@ export default function GuidanceOverlay({ response }: Props) {
       <AnimatePresence mode="wait">
         <motion.div
           key={next_instruction}
-          className={`absolute w-56 rounded-xl p-3 shadow-2xl text-sm bg-white ${
-            isOffTrack ? 'border-2 border-orange-400' : 'border-2 border-indigo-400'
+          className={`absolute w-56 rounded-xl p-3 text-sm backdrop-blur-sm ${
+            isOffTrack
+              ? 'bg-orange-900/40 border border-orange-400/60'
+              : 'bg-indigo-900/40 border border-indigo-400/60'
           }`}
-          style={CARD_STYLE[hintRegion]}
+          style={cardStyle}
           initial={{ opacity: 0, scale: 0.88 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.88 }}
           transition={{ duration: 0.2 }}
         >
           {isOffTrack && (
-            <p className="text-orange-500 font-semibold text-xs mb-1">⚠ Wrong page / view</p>
+            <p className="text-orange-300 font-semibold text-xs mb-1">⚠ Wrong page / view</p>
           )}
-          <p className="text-gray-800 leading-snug">{next_instruction}</p>
+          <p className="text-white leading-snug drop-shadow">{next_instruction}</p>
           {ui_target?.target_text && (
-            <p className="text-indigo-500 text-xs mt-2 font-medium">→ {ui_target.target_text}</p>
+            <p className="text-indigo-300 text-xs mt-2 font-medium">→ {ui_target.target_text}</p>
           )}
         </motion.div>
       </AnimatePresence>

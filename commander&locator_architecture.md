@@ -84,6 +84,90 @@ score = text_match_score
  + size_similarity
 ```
 
+## Workflow diagram
+```
+Client Request
+  { plan, current_step_id, screenshot_b64 }
+       │
+       ▼
+guidance_routes.py ──► analyze_screenshot() [guidance_service.py]
+                              │
+                    asyncio.gather() ─────────────────────────┐
+                              │                               │
+              ┌───────────────┘                               │
+              ▼ PARALLEL TASK A                  ▼ PARALLEL TASK B
+        run_ocr() [ocr_engine.py]          run_guidance() [guidance_chain.py]
+         │                                   │
+         ├─ Decode base64 → numpy RGB         ├─ Build system prompt:
+         ├─ Downscale to ≤1280px width        │   base_prompt + plan JSON
+         ├─ EasyOCR.readtext()                │   + current_step_id
+         └─ Returns list of candidates:       │
+            { bbox_px, center_px,             ├─ GPT-4o (vision, temp=0)
+              source:"ocr", raw_text,         │   screenshot as image_url
+              scores:{} }                     │
+            + (img_w, img_h)                  └─ Returns CommanderResponse:
+                                                  { status, confidence,
+                                                    current_step_id, step_done,
+                                                    next_instruction,
+                                                    target: {
+                                                      element_type (required)
+                                                      text, icon_description,
+                                                      color, location_hint,
+                                                      near_text
+                                                    } ← NO bbox
+                                                    notes }
+              │                                      │
+              └──────────── both done ───────────────┘
+                                 │
+                                 ▼
+                          locate() [locator.py]
+                                 │
+                     ┌───────────┴──────────────┐
+                     ▼                          ▼ (if icon_description)
+               OCR candidates          detect_icon() [template_matcher.py]
+                                         cv2.matchTemplate() + NMS
+                                         → template candidates
+                     │                          │
+                     └──────────┬───────────────┘
+                                ▼
+                      score_candidates() [scorer.py]
+                         │
+                         ├─ Resolve anchor:
+                         │   near_text OCR match → hint region center → screen center
+                         │
+                         ├─ Per candidate:
+                         │   text_score:   exact=1.0, substring=0.9, fuzzy≥85→ratio/100
+                         │   icon_score:   template match confidence
+                         │   region_score: 1.0 inside hint region, 0.4 outside
+                         │   anchor_score: 1.0 − normalized_distance
+                         │
+                         └─ total = (0.45·text + 0.35·icon + 0.10·region + 0.10·anchor)
+                                    normalized by which signals are present
+                                 │
+                                 ▼
+                         best candidate
+                         total_score < 0.55?
+                           YES → bbox_norm: null, method:"none"
+                           NO  → normalize to [x1,y1,x2,y2] ∈ [0,1]
+                                  method: "ocr" | "template"
+                                 │
+                                 ▼
+                      ResolvedGuidanceResponse
+                        { status, confidence,       ← from Commander
+                          step_done, next_instruction,
+                          ui_target: {
+                            hint_region, target_text,
+                            bbox_norm,               ← from Locator
+                            locator_confidence,
+                            locator_method } }
+                                 │
+                                 ▼
+                            Client (Overlay)
+
+```
+
+
+
 
 # Clarification regard the questions:
 ## 1. Commander output schema — what does the LLM now return?

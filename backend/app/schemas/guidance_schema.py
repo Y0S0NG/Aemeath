@@ -2,7 +2,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-HintRegion = Literal["top_left", "top_right", "bottom_left", "bottom_right", "center"]
 GuidanceStatus = Literal["on_track", "off_track", "uncertain"]
 
 
@@ -14,7 +13,6 @@ class ElementTarget(BaseModel):
     text: Optional[str] = None                  # visible text label
     icon_description: Optional[str] = None     # e.g. "plus icon", "gear icon"
     color: Optional[str] = None                # e.g. "blue", "red"
-    location_hint: Optional[HintRegion] = None
     near_text: Optional[list[str]] = None       # anchor strings for distance scoring
 
 
@@ -33,7 +31,6 @@ class CommanderResponse(BaseModel):
 
 class ResolvedUITarget(BaseModel):
     """Post-locator result with precise bbox."""
-    hint_region: Optional[HintRegion] = None
     target_text: Optional[str] = None
     # [x1, y1, x2, y2] normalized 0–1; None when locator found no match
     bbox_norm: Optional[list[float]] = Field(default=None, min_length=4, max_length=4)

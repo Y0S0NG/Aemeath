@@ -2,8 +2,11 @@ import { useCallback, useRef, useState } from 'react'
 import { analyzeScreenshot } from '../services/api'
 import type { GuidanceResponse, Plan } from '../types'
 
-export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
+export type CaptureMode = 'auto' | 'manual'
+
+export function useScreenCapture(plan: Plan | null, intervalSecs: number, mode: CaptureMode = 'auto') {
   const [isCapturing, setIsCapturing] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [currentStepId, setCurrentStepId] = useState<string | null>(null)
   const [guidanceResponse, setGuidanceResponse] = useState<GuidanceResponse | null>(null)
@@ -26,6 +29,7 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     streamRef.current = null
     videoRef.current = null
     setIsCapturing(false)
+    setIsAnalyzing(false)
     setGuidanceResponse(null)
     window.electronAPI.hideOverlay()
   }, [])
@@ -37,10 +41,12 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     const stepId = stepIdRef.current
     if (!p || !video || !canvas || !stepId) return
 
+    setIsAnalyzing(true)
+
     canvas.width = video.videoWidth || 1280
     canvas.height = video.videoHeight || 720
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (!ctx) { setIsAnalyzing(false); return }
     ctx.drawImage(video, 0, 0)
 
     const b64 = canvas.toDataURL('image/png').split(',')[1]
@@ -66,6 +72,23 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
       }
     } catch (err) {
       console.error('Guidance analysis error:', err)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }, [stopCapture])
+
+  const advanceStep = useCallback(() => {
+    const p = planRef.current
+    const stepId = stepIdRef.current
+    if (!p || !stepId) return
+    const idx = p.steps.findIndex(s => s.id === stepId)
+    const next = p.steps[idx + 1]
+    if (next) {
+      stepIdRef.current = next.id
+      setCurrentStepId(next.id)
+    } else {
+      setIsComplete(true)
+      stopCapture()
     }
   }, [stopCapture])
 
@@ -104,7 +127,10 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
       video.play().catch(() => {})
 
       video.onloadedmetadata = () => {
-        timerRef.current = setInterval(captureAndAnalyze, intervalSecs * 1000)
+        if (mode === 'auto') {
+          timerRef.current = setInterval(captureAndAnalyze, intervalSecs * 1000)
+        }
+        // In manual mode the user triggers captureAndAnalyze via the button
       }
 
       // Handle user stopping screen share from the native UI
@@ -112,7 +138,7 @@ export function useScreenCapture(plan: Plan | null, intervalSecs: number) {
     } catch (err) {
       console.error('Screen capture error:', err)
     }
-  }, [intervalSecs, captureAndAnalyze, stopCapture])
+  }, [mode, intervalSecs, captureAndAnalyze, stopCapture])
 
-  return { isCapturing, isComplete, currentStepId, guidanceResponse, startCapture, stopCapture }
+  return { isCapturing, isAnalyzing, isComplete, currentStepId, guidanceResponse, startCapture, stopCapture, captureAndAnalyze, advanceStep }
 }

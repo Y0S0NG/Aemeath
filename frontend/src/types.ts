@@ -18,17 +18,9 @@ export interface Plan {
 // Guidance types (mirrors backend/app/schemas/guidance_schema.py)
 // ---------------------------------------------------------------------------
 
-export type HintRegion =
-  | "top_left"
-  | "top_right"
-  | "bottom_left"
-  | "bottom_right"
-  | "center";
-
 export type GuidanceStatus = "on_track" | "off_track" | "uncertain";
 
 export interface UITarget {
-  hint_region?: HintRegion;
   target_text?: string;
   /** [x1, y1, x2, y2] normalized 0–1; null when locator found no confident match */
   bbox_norm: [number, number, number, number] | null;

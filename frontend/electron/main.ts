@@ -30,6 +30,10 @@ function createMainWindow(): void {
     },
   })
 
+  // Exclude the panel from screen captures so OCR never picks up its own text.
+  // On macOS this sets NSWindowSharingNone; on Windows it uses SetWindowDisplayAffinity.
+  mainWindow.setContentProtection(true)
+
   // Sit above normal windows but below the guidance overlay ('screen-saver' level)
   mainWindow.setAlwaysOnTop(true, 'floating')
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })

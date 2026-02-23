@@ -17,8 +17,7 @@ For the "target" field, describe the UI element the user should interact with. B
 - text: the exact visible text label if present
 - icon_description: brief description of the icon if applicable ("plus icon", "gear icon", "kebab menu")
 - color: dominant color if distinguishing ("blue", "red", "green")
-- location_hint: approximate screen region ("top_left", "top_right", "bottom_left", "bottom_right", "center")
-- near_text: list of 1–3 nearby text strings visible close to the target (e.g. section headers, labels)
+- near_text: list of 1–3 nearby text strings visible close to the target (e.g. section headers, labels near the element)
 
 Do NOT provide bounding box coordinates — that is handled separately by the locator system.
 
@@ -35,7 +34,6 @@ Respond ONLY with a valid JSON object — no markdown fences, no extra text:
     "text": "<visible text label, or null>",
     "icon_description": "<icon description, or null>",
     "color": "<color, or null>",
-    "location_hint": "<top_left | top_right | bottom_left | bottom_right | center | null>",
     "near_text": ["<nearby text 1>", "<nearby text 2>"]
   },
   "notes": "<optional extra context for the user, or null>"
